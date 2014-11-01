@@ -26,7 +26,7 @@
     },
 
     "MySqlEndpoint": {
-      "Description": "MySQL server instance DNS endpoint",
+      "Description": "MySql server DNS endpoint",
       "Type": "String"
     },
 
@@ -95,7 +95,7 @@
       }
     },
 
-    "ElbSecurityGroup" : {
+    "WebSecurityGroup" : {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
         "GroupDescription" : "Enable HTTP and HTTPS access to port 80 and 443 respectively",
@@ -106,46 +106,10 @@
       }
     },
 
-    "WebAppSecurityGroup" : {
-      "Type": "AWS::EC2::SecurityGroup",
-      "Properties": {
-        "GroupDescription" : "Enable HTTP and HTTPS access to port 80 and 443 respectively",
-        "SecurityGroupIngress" : [
-          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "SourceSecurityGroupId" : { "Fn::GetAtt": [ "ElbSecurityGroup", "GroupId" ] } },
-          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "SourceSecurityGroupId" : { "Fn::GetAtt": [ "ElbSecurityGroup", "GroupId" ] } } 
-        ]
-      }
-    },
-
-    "WebAppLoadBalancer": {
-      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
-      "Properties": {
-        "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
-        "Listeners": [ {
-          "LoadBalancerPort": "80",
-          "InstancePort": "80",
-          "Protocol": "HTTP"
-        } ],
-        "HealthCheck": {
-          "Timeout": "5",
-          "Target": { "Fn::Join" : [ "", [ "HTTP:", "80", "/" ] ] },
-          "Interval": "20",
-          "HealthyThreshold": "3",
-          "UnhealthyThreshold": "5"
-        },
-        "ConnectionDrainingPolicy": {
-          "Enabled": true,
-          "Timeout": 20
-        },
-        "CrossZone": true,
-        "SecurityGroups" : [ { "Fn::GetAtt": [ "ElbSecurityGroup", "GroupId" ] } ]
-      }
-    },
-
-    "WebAppAutoScalingLaunchConfiguration" : {
-      "Type": "AWS::AutoScaling::LaunchConfiguration",
-      "Metadata" : {
-        "AWS::CloudFormation::Init" : {
+    "WebServer" : {
+      "Type": "AWS::EC2::Instance",
+	  "Metadata" : {
+	    "AWS::CloudFormation::Init" : {
           "config" : {
             "users": {
               "wsgi": {
@@ -195,7 +159,7 @@
                 "mode": "000644",
                 "owner": "root",
                 "group": "root"
-              }
+              }	  
             },
             "services" : {
               "sysvinit" : {
@@ -208,12 +172,12 @@
               }
             }
           }
-        }
+	    }
       },
       "Properties": {
         "IamInstanceProfile": { "Ref" : "AppAccessDatastoreInstanceProfile" },
         "ImageId":  { "Fn::FindInMap": [ "AWSRegionArch2AMI", { "Ref": "AWS::Region" }, "linux" ] },
-        "SecurityGroups": [ { "Fn::GetAtt": [ "WebAppSecurityGroup", "GroupId" ] } ],
+        "SecurityGroupIds": [ { "Fn::GetAtt": [ "WebSecurityGroup", "GroupId" ] } ],
         "InstanceType": { "Ref" : "InstanceType" },
         "UserData": {
           "Fn::Base64": {
@@ -222,26 +186,12 @@
 
               "# Apply updates cfn-init bootstrapper helper scripts\n",
               "yum update -y aws-cfn-bootstrap\n",
-              "/opt/aws/bin/cfn-init -s ", { "Ref" : "AWS::StackName" }, " -r WebAppAutoScalingLaunchConfiguration --region ", { "Ref" : "AWS::Region" }, " || echo 'Failed to run cfn-init'\n",
+              "/opt/aws/bin/cfn-init -s ", { "Ref" : "AWS::StackName" }, " -r WebServer --region ", { "Ref" : "AWS::Region" }, " || echo 'Failed to run cfn-init'\n",
               "/opt/aws/bin/cfn-signal -e $? '", { "Ref" : "WaitConditionHandle" }, "'\n"
             ] ]
           }
-        }
-      }
-    },
-
-    "WebAppAutoScalingGroup" : {
-      "Type": "AWS::AutoScaling::AutoScalingGroup",
-      "Properties": {
-        "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
-        "MaxSize": "10",
-        "Cooldown": "360",
-        "MinSize": "1",
-        "LaunchConfigurationName": { "Ref": "WebAppAutoScalingLaunchConfiguration" },
-        "LoadBalancerNames": [ { "Ref": "WebAppLoadBalancer" } ],
-        "HealthCheckType": "ELB",
-        "HealthCheckGracePeriod": "300",
-        "Tags" : [ { "Key" : "Name", "Value" : "cfn-zip-flask-signup app instance", "PropagateAtLaunch": true } ]
+        },
+        "Tags" : [ { "Key" : "Name", "Value" : "cfn-zip-flask-signup app instance" } ]
       }
     },
 
@@ -251,7 +201,7 @@
 
     "WaitCondition" : {
       "Type" : "AWS::CloudFormation::WaitCondition",
-      "DependsOn" : "WebAppAutoScalingGroup",
+      "DependsOn" : "WebServer",
       "Properties" : {
         "Count" : "1",
         "Handle" : { "Ref" : "WaitConditionHandle" },
@@ -265,7 +215,7 @@
 
     "WebAppUrl": {
       "Description": "The Flask SignUp web application URL",
-      "Value": { "Fn::Join": ["", ["http:\/\/", { "Fn::GetAtt": [ "WebAppLoadBalancer", "DNSName" ] } ] ] }
+      "Value": { "Fn::Join": ["", ["http:\/\/", { "Fn::GetAtt": [ "WebServer", "PublicDnsName" ] } ] ] }
     }
 
   }
