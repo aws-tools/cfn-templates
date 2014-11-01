@@ -1,0 +1,273 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09", 
+
+  "Description": "Flask + Python instance to run New Startup SignUp application using external data stores.",
+
+  "Mappings": {
+
+    "AWSRegionArch2AMI": {
+      "eu-west-1": { "linux": "ami-892fe1fe", "windows": "ami-d02386a7" },
+      "sa-east-1": { "linux": "ami-c9e649d4", "windows": "ami-e1f15bfc" },
+      "us-east-1": { "linux": "ami-76817c1e", "windows": "ami-904be6f8" },
+      "ap-northeast-1": { "linux": "ami-29dc9228", "windows": "ami-c9466bc8" },
+      "us-west-2": { "linux": "ami-d13845e1", "windows": "ami-d38dcce3" },
+      "us-west-1": { "linux": "ami-f0d3d4b5", "windows": "ami-09626b4c" },
+      "ap-southeast-1": { "linux": "ami-a6b6eaf4", "windows": "ami-c2604490" },
+      "ap-southeast-2": { "linux": "ami-d9fe9be3", "windows": "ami-a7c8a89d" }
+    }
+
+  },
+
+  "Parameters": {
+
+    "AppDeployUrl": {
+      "Description": "HTTP/S URL for application bundle",
+      "Type": "String"
+    },
+
+    "MySqlEndpoint": {
+      "Description": "MySQL server instance DNS endpoint",
+      "Type": "String"
+    },
+
+    "SnsTopicArn" : {
+      "Description": "SNS topic Amazon Resource Name (ARN)",
+      "Type": "String"
+    },
+
+    "AppTheme" : {
+      "Description": "Bootstrap theme for web application",
+      "Type": "String",
+      "Default": "superhero"
+    },
+
+    "InstanceType": {
+      "Description": "EC2 instance type, e.g. m3.medium, m3.large, etc.",
+      "Type": "String",
+      "Default": "m3.medium"
+    }
+
+  },
+
+  "Resources": {
+
+    "AppAccessDatastoreRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [ {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [ "ec2.amazonaws.com" ]
+            },
+            "Action": [ "sts:AssumeRole" ]
+          } ]
+        },
+        "Path": "/",
+        "Policies": [ {
+          "PolicyName": "AppAccess-Datastore",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action":   [ "dynamodb:PutItem" ],
+                "Resource": [ "*" ]
+              },
+              {
+                "Effect": "Allow",
+                "Action":   [ "sns:Publish" ],
+                "Resource": [ "*" ]
+              }
+            ]
+          }
+        } ]
+      }
+    },
+
+    "AppAccessDatastoreInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [ {
+          "Ref": "AppAccessDatastoreRole"
+        } ]
+      }
+    },
+
+    "ElbSecurityGroup" : {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription" : "Enable HTTP and HTTPS access to port 80 and 443 respectively",
+        "SecurityGroupIngress": [ 
+          { "CidrIp": "0.0.0.0/0", "FromPort": "80", "IpProtocol": "tcp", "ToPort": "80" },
+          { "CidrIp": "0.0.0.0/0", "FromPort": "443", "IpProtocol": "tcp", "ToPort": "443" }
+        ]
+      }
+    },
+
+    "WebAppSecurityGroup" : {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription" : "Enable HTTP and HTTPS access to port 80 and 443 respectively",
+        "SecurityGroupIngress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "SourceSecurityGroupId" : { "Fn::GetAtt": [ "ElbSecurityGroup", "GroupId" ] } },
+          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "SourceSecurityGroupId" : { "Fn::GetAtt": [ "ElbSecurityGroup", "GroupId" ] } } 
+        ]
+      }
+    },
+
+    "WebAppLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
+        "Listeners": [ {
+          "LoadBalancerPort": "80",
+          "InstancePort": "80",
+          "Protocol": "HTTP"
+        } ],
+        "HealthCheck": {
+          "Timeout": "5",
+          "Target": { "Fn::Join" : [ "", [ "HTTP:", "80", "/" ] ] },
+          "Interval": "20",
+          "HealthyThreshold": "3",
+          "UnhealthyThreshold": "5"
+        },
+        "ConnectionDrainingPolicy": {
+          "Enabled": true,
+          "Timeout": 20
+        },
+        "CrossZone": true,
+        "SecurityGroups" : [ { "Fn::GetAtt": [ "ElbSecurityGroup", "GroupId" ] } ]
+      }
+    },
+
+    "WebAppAutoScalingLaunchConfiguration" : {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Metadata" : {
+        "AWS::CloudFormation::Init" : {
+          "config" : {
+            "users": {
+              "wsgi": {
+                "homeDir": "/home/wsgi"
+              }
+            },
+            "packages" : {
+              "yum" : {
+                "python26-pip": [],
+                "httpd24": [],
+                "mod24_wsgi": [],
+                "MySQL-python": []
+              },
+              "python" : {
+                "virtualenv" : [],
+                "Flask" : [ "0.10.1" ],
+                "Jinja2": [ "2.7.1" ],
+                "MarkupSafe": [ "0.18" ],
+                "Werkzeug": [ "0.9.4" ],
+                "boto": [ "2.14.0" ],
+                "itsdangerous": [ "0.23" ],
+                "wsgiref": [ "0.1.2" ],
+                "MySQL-python": [ "1.2.3" ],
+                "SQLAlchemy": [ "0.9.8" ],
+                "Flask-SQLAlchemy": [ "2.0" ]
+              }
+            },
+            "sources": {
+              "/var/www/html/": { "Ref" : "AppDeployUrl" }
+            },
+            "files": {
+              "/etc/httpd/conf.d/wsgi.conf": {
+                "content": "PFZpcnR1YWxIb3N0ICo+DQoNCkFsaWFzIC9zdGF0aWMvIC92YXIvd3d3L2h0bWwvc3RhdGljLw0KPERpcmVjdG9yeSAvdmFyL3d3dy9odG1sL3N0YXRpYy8+DQogIE9yZGVyIGFsbG93LGRlbnkNCiAgQWxsb3cgZnJvbSBhbGwNCjwvRGlyZWN0b3J5Pg0KDQoNCldTR0lTY3JpcHRBbGlhcyAvIC92YXIvd3d3L2h0bWwvYXBwbGljYXRpb24ucHkNCldTR0lQYXNzQXV0aG9yaXphdGlvbiBPbg0KDQo8RGlyZWN0b3J5IC92YXIvd3d3L2h0bWw+DQogIFJlcXVpcmUgYWxsIGdyYW50ZWQNCjwvRGlyZWN0b3J5Pg0KDQpXU0dJRGFlbW9uUHJvY2VzcyB3c2dpIHVzZXI9d3NnaSBncm91cD13c2dpIHByb2Nlc3Nlcz0xIHRocmVhZHM9MTUgZGlzcGxheS1uYW1lPSV7R1JPVVB9DQpXU0dJUHJvY2Vzc0dyb3VwIHdzZ2kNCg0KPC9WaXJ0dWFsSG9zdD4=",
+                "encoding": "base64",
+                "mode": "000444",
+                "owner": "apache",
+                "group": "apache"
+              },
+              "/etc/sysconfig/httpd": {
+                "content": { "Fn::Join": [ "", [
+                  "export FLASK_DEBUG=\"false\"\n",
+                  "export THEME=\"", { "Ref" : "AppTheme" }, "\"\n",
+                  "export AWS_REGION=\"", { "Ref" : "AWS::Region" }, "\"\n",
+                  "export STARTUP_SIGNUP_RDBMS=\"", { "Ref" : "MySqlEndpoint" }, "\"\n",
+                  "export NEW_SIGNUP_TOPIC=\"", { "Ref" : "SnsTopicArn" }, "\"\n"
+                ] ] },
+                "mode": "000644",
+                "owner": "root",
+                "group": "root"
+              }
+            },
+            "services" : {
+              "sysvinit" : {
+                "httpd" : {
+                  "enabled" : "true",
+                  "ensureRunning" : "true",
+                  "files" : [ "/etc/httpd/conf/httpd.conf", "/etc/httpd/conf.d/wsgi.conf", "/etc/sysconfig/httpd" ],
+                  "sources" : [ "/var/www/html" ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "Properties": {
+        "IamInstanceProfile": { "Ref" : "AppAccessDatastoreInstanceProfile" },
+        "ImageId":  { "Fn::FindInMap": [ "AWSRegionArch2AMI", { "Ref": "AWS::Region" }, "linux" ] },
+        "SecurityGroups": [ { "Fn::GetAtt": [ "WebAppSecurityGroup", "GroupId" ] } ],
+        "InstanceType": { "Ref" : "InstanceType" },
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [ "", [
+              "#!/bin/bash\n",
+
+              "# Apply updates cfn-init bootstrapper helper scripts\n",
+              "yum update -y aws-cfn-bootstrap\n",
+              "/opt/aws/bin/cfn-init -s ", { "Ref" : "AWS::StackName" }, " -r WebAppAutoScalingLaunchConfiguration --region ", { "Ref" : "AWS::Region" }, " || echo 'Failed to run cfn-init'\n",
+              "/opt/aws/bin/cfn-signal -e $? '", { "Ref" : "WaitConditionHandle" }, "'\n"
+            ] ]
+          }
+        }
+      }
+    },
+
+    "WebAppAutoScalingGroup" : {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
+        "MaxSize": "10",
+        "Cooldown": "360",
+        "MinSize": "1",
+        "LaunchConfigurationName": { "Ref": "WebAppAutoScalingLaunchConfiguration" },
+        "LoadBalancerNames": [ { "Ref": "WebAppLoadBalancer" } ],
+        "HealthCheckType": "ELB",
+        "HealthCheckGracePeriod": "300",
+        "Tags" : [ { "Key" : "Name", "Value" : "cfn-zip-flask-signup app instance", "PropagateAtLaunch": true } ]
+      }
+    },
+
+    "WaitConditionHandle" : {
+      "Type" : "AWS::CloudFormation::WaitConditionHandle"
+    },
+
+    "WaitCondition" : {
+      "Type" : "AWS::CloudFormation::WaitCondition",
+      "DependsOn" : "WebAppAutoScalingGroup",
+      "Properties" : {
+        "Count" : "1",
+        "Handle" : { "Ref" : "WaitConditionHandle" },
+        "Timeout" : "600"
+      }
+    }
+
+  },
+
+  "Outputs": {
+
+    "WebAppUrl": {
+      "Description": "The Flask SignUp web application URL",
+      "Value": { "Fn::Join": ["", ["http:\/\/", { "Fn::GetAtt": [ "WebAppLoadBalancer", "DNSName" ] } ] ] }
+    }
+
+  }
+
+}

@@ -1,0 +1,241 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "Provides AMI lookup functionality with a DynamoDB table - AMI catalog - returns AMI ID based on key/values stored in a DynamoDB table.",
+
+  "Mappings": {
+
+    "AwsRegionAmznLinuxAmi": {
+      "eu-west-1": { "hvm": "ami-892fe1fe", "pvm": "ami-d02386a7" },
+      "sa-east-1": { "hvm": "ami-c9e649d4", "pvm": "ami-e1f15bfc" },
+      "us-east-1": { "hvm": "ami-76817c1e", "pvm": "ami-904be6f8" },
+      "ap-northeast-1": { "hvm": "ami-29dc9228", "pvm": "ami-c9466bc8" },
+      "us-west-2": { "hvm": "ami-d13845e1", "pvm": "ami-d38dcce3" },
+      "us-west-1": { "hvm": "ami-f0d3d4b5", "pvm": "ami-09626b4c" },
+      "ap-southeast-1": { "hvm": "ami-a6b6eaf4", "pvm": "ami-c2604490" },
+      "ap-southeast-2": { "hvm": "ami-d9fe9be3", "pvm": "ami-a7c8a89d" }
+    }
+
+  },
+
+  "Resources" : {
+
+    "RunnerRole" : {
+      "Type" : "AWS::IAM::Role",
+      "Properties" : {
+        "AssumeRolePolicyDocument" : {
+          "Version": "2008-10-17",
+          "Statement": [ {
+            "Effect": "Allow",
+            "Principal": { "Service": [ "ec2.amazonaws.com" ] },
+            "Action": [ "sts:AssumeRole" ]
+          } ]
+        },
+        "Path" : "/",
+        "Policies" : [ {
+          "PolicyName" : "CustomResourceRunner",
+          "PolicyDocument" : {
+            "Statement" : [ 
+              {
+                "Effect" : "Allow",
+                "Action" : [ "sqs:ChangeMessageVisibility", "sqs:DeleteMessage", "sqs:ReceiveMessage" ],
+                "Resource" : { "Fn::GetAtt" : [ "CustomResourceQueue", "Arn" ] }
+              },
+              {
+                "Effect" : "Allow",
+                "Action" : [ "dynamodb:GetItem", "dynamodb:Query" ],
+                "Resource" : [ "*" ]
+              }
+            ]
+          }
+        } ]
+      }
+    },
+
+    "RunnerInstanceProfile" : {
+      "Type" : "AWS::IAM::InstanceProfile",
+      "Properties" : {
+        "Path" : "/",
+        "Roles" : [ { "Ref" : "RunnerRole" } ]
+      }
+    },
+
+    "DynamoDbAmiTable" : {
+      "Type" : "AWS::DynamoDB::Table",
+      "Properties" : {
+        "TableName" : "ami-lookup-table",
+        "ProvisionedThroughput" : {
+          "ReadCapacityUnits" : "5",
+          "WriteCapacityUnits" : "5"
+        },
+        "AttributeDefinitions" : [
+         {
+           "AttributeName" : "hash",
+           "AttributeType" : "S"
+          },
+          {
+            "AttributeName" : "range",
+            "AttributeType" : "N"
+          }
+        ],
+        "KeySchema" : [
+          {
+            "AttributeName" : "hash",
+            "KeyType" : "HASH"
+          },
+          {
+            "AttributeName" : "range",
+            "KeyType" : "RANGE"
+          }
+        ]
+      }
+    },
+
+    "CustomResourceQueue" : {
+      "Type": "AWS::SQS::Queue",
+        "Properties": {
+          "ReceiveMessageWaitTimeSeconds": "20",
+          "VisibilityTimeout": "30"
+        }
+    }, 
+
+    "CustomResourceTopic" : {
+      "Type" : "AWS::SNS::Topic",
+      "Properties" : {
+        "Subscription" : [ { "Endpoint" : { "Fn::GetAtt" : [ "CustomResourceQueue", "Arn" ] }, "Protocol" : "sqs" } ]
+      }
+    },
+
+    "CustomResourceQueuePolicy" : {
+      "Type" : "AWS::SQS::QueuePolicy",
+      "Properties" : {
+        "Queues" : [ { "Ref" : "CustomResourceQueue" } ],
+        "PolicyDocument" : {
+          "Version": "2008-10-17",
+          "Id": { "Fn::Join" : [ "/", [ { "Fn::GetAtt" : [ "CustomResourceQueue", "Arn" ] }, "CustomResourceQueuePolicy" ] ] },
+          "Statement": [ {
+            "Sid": "AllowTopicToPublishMessages",
+            "Effect": "Allow",
+            "Principal": { "AWS": "*" },
+            "Action": [ "sqs:SendMessage" ],
+            "Resource": { "Fn::GetAtt" : [ "CustomResourceQueue", "Arn" ] },
+            "Condition": { "ArnEquals": { "aws:SourceArn": { "Ref" : "CustomResourceTopic" } } }
+          } ]
+        }
+      }
+    },
+
+    "RunnerLaunchConfig" : {
+      "Type" : "AWS::AutoScaling::LaunchConfiguration",
+      "Properties" : {
+        "IamInstanceProfile" : { "Ref" : "RunnerInstanceProfile" },
+        "ImageId" : { "Fn::FindInMap" : [ "AwsRegionAmznLinuxAmi", { "Ref" : "AWS::Region" }, "hvm" ] },
+        "InstanceType" : "t2.micro",
+        "SecurityGroups": [ { "Fn::GetAtt": [ "RunnerSecurityGroup", "GroupId" ] } ],
+        "UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+          "#!/bin/bash -x\n",
+          "exec &> /home/ec2-user/userdata.log\n",
+          "yum update -y aws-cfn-bootstrap\n",
+          "/opt/aws/bin/cfn-init --region ", { "Ref" : "AWS::Region" }, " -s ", { "Ref" : "AWS::StackId" }, " -r RunnerLaunchConfig -v\n",
+          "/opt/aws/bin/cfn-signal -e $? '", { "Ref" : "RunnerWaitConditionHandle" }, "'\n"
+        ] ] } }
+      },
+      "Metadata" : {
+        "AWS::CloudFormation::Init" : {
+          "config" : {
+            "packages" : {
+              "rpm" : {
+                "aws-cfn-resource-bridge" : "https://raw.githubusercontent.com/aws-staging/aws-labs/master/aws-cfn-resource-bridge-0.1-4.noarch.rpm"
+              }
+            },
+            "files" : {
+              "/etc/cfn/bridge.d/schema.conf" : {
+                "content" : { "Fn::Join" : ["", [
+                  "[schema]\n",
+                  "resource_type=Custom::AmiLookup\n",
+                  "flatten=false\n",
+                  "queue_url=", { "Ref" : "CustomResourceQueue" }, "\n",
+                  "timeout=600\n",
+                  "default_action=/home/ec2-user/ami-ddb-lookup.py\n"
+                ] ] }
+              },
+              "/home/ec2-user/ami-ddb-lookup.py" : {
+                "source" : "https://raw.githubusercontent.com/aws-staging/aws-labs/master/ami-ddb-lookup.py",
+                "mode" : "000755",
+                "owner" : "ec2-user"
+              }
+            },
+            "services" : {
+              "sysvinit" : {
+                "cfn-resource-bridge" : {
+                  "enabled" : "true",
+                  "ensureRunning" : "true",
+                  "files" : [ "/etc/cfn/bridge.d/schema.conf", "/home/ec2-user/ami-ddb-lookup.py" ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "RunnerAutoScalingGroup" : {
+      "Type" : "AWS::AutoScaling::AutoScalingGroup",
+      "Properties" : {
+        "AvailabilityZones" : { "Fn::GetAZs" : ""},
+        "LaunchConfigurationName" : { "Ref" : "RunnerLaunchConfig" },
+        "MinSize" : "1",
+        "MaxSize" : "1",
+        "Tags" : [ { "Key" : "Name", "Value" : "Custom Resource Runner - AMI Lookup", "PropagateAtLaunch": true } ]
+      }
+    },
+
+    "RunnerSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Access to Custom Resource Runner instances"
+      }
+    },
+
+    "RunnerSecurityGroupIngress": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "IpProtocol": "tcp",
+        "FromPort": "22",
+        "ToPort": "22",
+        "SourceSecurityGroupId": { "Fn::GetAtt": [ "RunnerSecurityGroup", "GroupId" ] },
+        "GroupId": { "Fn::GetAtt": [ "RunnerSecurityGroup", "GroupId" ] }
+      }
+    },
+
+    "RunnerWaitConditionHandle" : {
+      "Type" : "AWS::CloudFormation::WaitConditionHandle"
+    },
+
+    "RunnerWaitCondition" : {
+      "Type" : "AWS::CloudFormation::WaitCondition",
+      "DependsOn" : "RunnerAutoScalingGroup",
+      "Properties" : {
+        "Count" : "1",
+        "Handle" : { "Ref" : "RunnerWaitConditionHandle" },
+        "Timeout" : "600"
+      }
+    }
+
+  },
+
+  "Outputs" : {
+
+    "DynamoDbAmiTableName" : {
+      "Description" : "DynamoDB table name for the AMI lookup catalog - composite key required for queries are hash (string) and range (number)",
+      "Value" : { "Ref" : "DynamoDbAmiTable" }
+     },
+
+     "CustomResourceTopicArn" : {
+       "Description" : "Custom Resource SNS topic ARN",
+       "Value" : { "Ref" : "CustomResourceTopic" }
+     }
+
+  }
+ 
+}

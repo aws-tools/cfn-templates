@@ -1,0 +1,800 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Bamboo Server",
+    "Mappings": {
+        "AMIID": {
+            "eu-west-1": {
+                "prod": "ami-a921dfde"
+            },
+            "sa-east-1": {
+                "prod": "ami-89de7c9"
+            },
+            "us-east-1": {
+                "prod": "ami-2f726546"
+            },
+            "ap-northeast-1": {
+                "prod": "ami-a1bec3a0"
+            },
+            "us-west-2": {
+                "prod": "ami-b8f69f88"
+            },
+            "us-west-1": {
+                "prod": "ami-84f1cfc1"
+            },
+            "ap-southeast-1": {
+                "prod": "ami-787c2c2a"
+            },
+            "ap-southeast-2": {
+                "prod": "ami-0bc85031"
+            }
+        }
+    },
+    "Outputs": {
+        "InstanceId": {
+            "Description": "InstanceId of the Bamboo Server",
+            "Value": {
+                "Ref": "Instance"
+            }
+        },
+        "BambooServer": {
+            "Description": "Hostname for the Bamboo Server",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Ref": "EIP"
+                        }
+                    ]
+                ]
+            }
+        }
+    },
+    "Parameters": {
+        "Application": {
+            "Default": "bamboo",
+            "Description": "Application name",
+            "Type": "String"
+        },
+        "BambooHomeDir": {
+            "Default": "/data/atlassian/bamboo/data",
+            "Description": "Bamboo Home Directory",
+            "Type": "String"
+        },
+        "BambooInstallDir": {
+            "Default": "/data/atlassian/bamboo",
+            "Description": "Bamboo Install Directory",
+            "Type": "String"
+        },
+        "BambooUser": {
+            "Default": "bamboo",
+            "Description": "Bamboo User",
+            "Type": "String"
+        },
+        "Branch": {
+            "Default": "prod",
+            "Description": "Git branch name, which becomes the environment.",
+            "Type": "String"
+        },
+        "BuildNumber": {
+            "Default": "1",
+            "Description": "Bamboo build number.",
+            "Type": "String"
+        },
+        "HostedZone": {
+            "Default": "reinvent.cicd-bootcamp.com",
+            "Description": "Route53 hosted zone.",
+            "Type": "String"
+        },
+        "KeyName": {
+            "Default": "",
+            "Description": "SSH key for instances",
+            "Type": "String"
+        },
+        "NetworkSecurityEnv": {
+            "Default": "prod",
+            "Description": "Name of the environment for network and security",
+            "Type": "String"
+        },
+        "Product": {
+            "Default": "bambooserver",
+            "Description": "Tag for Product",
+            "Type": "String"
+        },
+        "Bucket": {
+            "Default": "reinvent-continuous-integration-delivery",
+            "Description": "S3 Bucket ID",
+            "Type": "String"
+        },
+        "Tarball": {
+            "Default": "atlassian-bamboo-5.4.2",
+            "Description": "Application tarball name sans extension",
+            "Type": "String"
+        },
+        "WaitTimer": {
+            "Default": "3300",
+            "Description": "How long to to wait for stack to complete",
+            "Type": "String"
+        },
+        "InstanceType": {
+            "Default": "m3.medium",
+            "Description": "Instance type for the Bamboo server",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "BaseSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Allow SSH access to the Bamboo server",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        },
+        "BambooSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Allow HTTP to the Bamboo Server",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        },
+        "Instance": {
+            "Metadata": {
+                "AWS::CloudFormation::Authentication": {
+                    "S3AccessCreds": {
+                        "buckets": [
+                            {
+                                "Ref": "Bucket"
+                            }
+                        ],
+                        "roleName": {
+                            "Ref": "InstanceRole"
+                        },
+                        "type": "S3"
+                    }
+                },
+                "AWS::CloudFormation::Init": {
+                    "configSets": {
+                        "amzn": [
+                            "ops",
+                            "dev"
+                        ]
+                    },
+                    "dev": {
+                        "files": {
+                            "/etc/httpd/conf.d/ajp.conf": {
+                                "authentication": "S3AccessCreds",
+                                "group": "root",
+                                "mode": "000644",
+                                "owner": "root",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/builds/",
+                                            {
+                                                "Ref": "Product"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Branch"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "BuildNumber"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Application"
+                                            },
+                                            "/files/ajp.conf"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "/usr/local/bin/AMIregister": {
+                                "authentication": "S3AccessCreds",
+                                "group": "root",
+                                "mode": "000755",
+                                "owner": "root",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/builds/",
+                                            {
+                                                "Ref": "Product"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Branch"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "BuildNumber"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Application"
+                                            },
+                                            "/files/AMIregister"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "/home/ec2-user/app_postmetadata.sh": {
+                                "authentication": "S3AccessCreds",
+                                "group": "ec2-user",
+                                "mode": "000755",
+                                "owner": "ec2-user",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/builds/",
+                                            {
+                                                "Ref": "Product"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Branch"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "BuildNumber"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Application"
+                                            },
+                                            "/files/app_postmetadata.sh"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "/tmp/atlassian-bamboo.tar.gz": {
+                                "authentication": "S3AccessCreds",
+                                "group": "root",
+                                "mode": "000644",
+                                "owner": "root",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/repo/products/devsupt/",
+                                            {
+                                                "Ref": "Tarball"
+                                            },
+                                            ".tar.gz"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "/tmp/bamboo": {
+                                "authentication": "S3AccessCreds",
+                                "group": "root",
+                                "mode": "000644",
+                                "owner": "root",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/builds/",
+                                            {
+                                                "Ref": "Product"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Branch"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "BuildNumber"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Application"
+                                            },
+                                            "/files/bamboo.startup"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "/tmp/jdk-7u45-linux-x64.rpm": {
+                                "authentication": "S3AccessCreds",
+                                "group": "root",
+                                "mode": "000644",
+                                "owner": "root",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/repo/products/devsupt/jdk-7u45-linux-x64.rpm"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "/tmp/mysql-connector-java-5.1.29-bin.jar": {
+                                "authentication": "S3AccessCreds",
+                                "group": "root",
+                                "mode": "000777",
+                                "owner": "root",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/repo/products/devsupt/mysql-connector-java-5.1.29-bin.jar"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "/tmp/server.xml": {
+                                "authentication": "S3AccessCreds",
+                                "group": "root",
+                                "mode": "000744",
+                                "owner": "root",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/builds/",
+                                            {
+                                                "Ref": "Product"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Branch"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "BuildNumber"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Application"
+                                            },
+                                            "/files/server.xml"
+                                        ]
+                                    ]
+                                }
+                            }
+                        },
+                        "packages": {
+                            "yum" : {
+                                "git": [],
+                                "jq": [],
+                                "python26-pip": [],
+                                "httpd24": [],
+                                "mod24_wsgi": [],
+                                "MySQL-python": []
+                            },
+                            "python" : {
+                                "virtualenv" : [],
+                                "Flask" : [ "0.10.1" ],
+                                "Jinja2": [ "2.7.1" ],
+                                "MarkupSafe": [ "0.18" ],
+                                "Werkzeug": [ "0.9.4" ],
+                                "boto": [ "2.14.0" ],
+                                "itsdangerous": [ "0.23" ],
+                                "wsgiref": [ "0.1.2" ],
+                                "MySQL-python": [ "1.2.3" ],
+                                "SQLAlchemy": [ "0.9.8" ],
+                                "Flask-SQLAlchemy": [ "2.0" ]
+                            },
+                            "rubygems": {
+                                "bundler": [],
+                                "cloudformation-ruby-dsl": []
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "httpd": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true",
+                                    "files": [
+                                        "/etc/httpd/conf.d/ajp.conf"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "ops": {
+                        "files": {
+                            "/home/ec2-user/app_postmetadata.sh": {
+                                "authentication": "S3AccessCreds",
+                                "group": "root",
+                                "mode": "000755",
+                                "owner": "root",
+                                "source": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "https://s3-us-west-2.amazonaws.com/",
+                                            {
+                                                "Ref": "Bucket"
+                                            },
+                                            "/builds/",
+                                            {
+                                                "Ref": "Product"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Branch"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "BuildNumber"
+                                            },
+                                            "-",
+                                            {
+                                                "Ref": "Application"
+                                            },
+                                            "/files/app_postmetadata.sh"
+                                        ]
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/sda1",
+                        "Ebs": {
+                            "VolumeSize": "50",
+                            "VolumeType": "gp2"
+                        }
+                    }
+                ],
+                "IamInstanceProfile": {
+                    "Ref": "InstanceProfile"
+                },
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "AMIID",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        {
+                            "Ref": "NetworkSecurityEnv"
+                        }
+                    ]
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "BaseSecurityGroup"
+                    },
+                    {
+                        "Ref": "BambooSecurityGroup"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Bamboo Server"
+                    },
+                    {
+                        "Key": "Type",
+                        "Value": {
+                            "Fn::Join": [
+                                "",
+                                [
+                                    {
+                                        "Ref": "Product"
+                                    },
+                                    "-",
+                                    {
+                                        "Ref": "Branch"
+                                    },
+                                    "-",
+                                    {
+                                        "Ref": "BuildNumber"
+                                    },
+                                    "-",
+                                    {
+                                        "Ref": "Application"
+                                    }
+                                ]
+                            ]
+                        }
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -ex\n",
+                                "        yum update -y aws-cli\n",
+                                "        CFNDIR=/opt/aws/bin\n",
+                                "        $CFNDIR/cfn-init -v -c amzn -s ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                " -r Instance --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                " --role ",
+                                {
+                                    "Ref": "InstanceRole"
+                                },
+                                "\n",
+                                "aws cloudformation describe-stacks --stack-name ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                " --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "  --output text | grep PARAM | sed -e 's/^PARAMETERS\\s/export /g' |sed -e 's/\t/=\"/g' | sed -e 's/$/\"/g' >> /etc/profile\n",
+                                "echo 'StackName=",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "' >> /etc/profile\n",
+                                "sed -i -e 's/Defaults    requiretty/#Defaults    requiretty/g' /etc/sudoers\n",
+                                "if [[ -e /home/ec2-user/app_postmetadata.sh ]];then /bin/su -c \"/home/ec2-user/app_postmetadata.sh ",
+                                {
+                                    "Ref": "NetworkSecurityEnv"
+                                },
+                                "\" -s /bin/sh ec2-user ;fi\n",
+                                "$CFNDIR/cfn-signal -e 0 '",
+                                {
+                                    "Ref": "WaitHandle"
+                                },
+                                "'\n"
+                            ]
+                        ]
+                    }
+                }
+            },
+            "Type": "AWS::EC2::Instance"
+        },
+        "InstanceProfile": {
+            "Properties": {
+                "Path": "/",
+                "Roles": [
+                    {
+                        "Ref": "InstanceRole"
+                    }
+                ]
+            },
+            "Type": "AWS::IAM::InstanceProfile"
+        },
+        "InstanceRole": {
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ec2.amazonaws.com"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "dynamodb:*"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        },
+                        "PolicyName": "DynamoDB"
+                    },
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "cloudformation:ValidateTemplate"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        },
+                        "PolicyName": "bamboo"
+                    },
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "s3:ListBucket"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:s3:::",
+                                                    {
+                                                        "Ref": "Bucket"
+                                                    }
+                                                ]
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "s3:GetObject"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:s3:::",
+                                                    {
+                                                        "Ref": "Bucket"
+                                                    },
+                                                    "/*"
+                                                ]
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "s3:ListBucket"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:s3:::",
+                                                    {
+                                                        "Ref": "Bucket"
+                                                    }
+                                                ]
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "s3:GetObject"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:s3:::",
+                                                    {
+                                                        "Ref": "Bucket"
+                                                    },
+                                                    "/*"
+                                                ]
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        "PolicyName": "S3Access"
+                    },
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "cloudformation:DescribeStacks",
+                                        "cloudformation:DescribeStackResource"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        },
+                        "PolicyName": "cfninit"
+                    }
+                ]
+            },
+            "Type": "AWS::IAM::Role"
+        },
+        "WaitCondition": {
+            "Properties": {
+                "Handle": {
+                    "Ref": "WaitHandle"
+                },
+                "Timeout": {
+                    "Ref": "WaitTimer"
+                }
+            },
+            "Type": "AWS::CloudFormation::WaitCondition"
+        },
+        "WaitHandle": {
+            "Type": "AWS::CloudFormation::WaitConditionHandle"
+        },
+        "EIP": {
+            "Type": "AWS::EC2::EIP",
+            "Properties": {
+                "InstanceId": {
+                    "Ref": "Instance"
+                }
+            }
+        }
+    }
+}
