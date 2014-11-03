@@ -18,19 +18,17 @@
       "ConstraintDescription" : "must be an SNS topic ARN"
     },
 
-    "BuildDate" : {
-      "Description" : "Build date of AMI in ISO 8601 date (YYYY-MM-DD) format",
-      "Type" : "String",
-      "AllowedPattern" : "(\\d{4})-(\\d{2})-(\\d{2})",
-      "ConstraintDescription" : "Build date must be in YYYY-MM-DD format"
+    "HashKey" : {
+      "Description" : "String for hash key",
+      "Type" : "String"
     },
 
-    "BuildNumber" : {
-      "Description" : "Build number of AMI or latest",
+    "RangeKey" : {
+      "Description" : "Number for range key or string 'latest'",
       "Type" : "String",
       "Default" : "latest",
       "AllowedPattern" : "[0-9]*|latest",
-      "ConstraintDescription" : "Build number must be a number or string 'latest'"
+      "ConstraintDescription" : "Range key must be a number or string 'latest'"
     },
 
     "DynamoDbAmiTable" : {
@@ -141,8 +139,8 @@
         "ServiceToken" : { "Ref" : "AmiLookupSnsTopicArn" },
         "region" : { "Ref" : "AWS::Region" },
         "table" : { "Ref" : "DynamoDbAmiTable" },
-        "hash": { "Ref" : "BuildDate" },
-        "range": { "Ref" : "BuildNumber" }
+        "hash": { "Ref" : "HashKey" },
+        "range": { "Ref" : "RangeKey" }
       }
     },
 
