@@ -1,0 +1,247 @@
+{  
+   "AWSTemplateFormatVersion":"2010-09-09",
+   
+   "Description": "AMI builder",
+
+   "Mappings":{  
+      "AMIID":{
+         "eu-west-1": { "prod": "ami-892fe1fe" },
+         "sa-east-1": { "prod": "ami-c9e649d4" },
+         "us-east-1": { "prod": "ami-76817c1e" },
+         "ap-northeast-1": { "prod": "ami-29dc9228" },
+         "us-west-2": { "prod": "ami-d13845e1" },
+         "us-west-1": { "prod": "ami-f0d3d4b5" },
+         "ap-southeast-1": { "prod": "ami-a6b6eaf4" },
+         "ap-southeast-2": { "prod": "ami-d9fe9be3" }
+      }
+   },
+   "Outputs":{  
+      "BuilderInstance":{  
+         "Description":"ID of the builder instance",
+         "Value":{  
+            "Ref":"BuilderInstance"
+         }
+      }
+   },
+
+   "Parameters":{  
+
+      "MySqlEndpoint": {
+         "Description": "MySql server instance DNS endpoint",
+         "Type": "String"
+      },
+
+      "SnsTopicArn" : {
+         "Description": "SNS topic Amazon Resource Name (ARN)",
+         "Type": "String"
+      },
+
+      "AppTheme" : {
+         "Description": "Bootstrap theme for web application",
+         "Type": "String",
+         "Default": "superhero"
+      },
+
+      "ReleaseBundleURL": {
+         "Description" : "URL of Python Flask Signup bundle (zip)",
+         "Type" : "String",
+         "Default"  : "https://github.com/aws-tools/py-flask-signup/zipball/master"
+      },
+
+      "InstanceType": {
+         "Description": "EC2 instance type, e.g. m3.medium, m3.large, etc.",
+         "Type": "String",
+         "Default": "t2.micro"
+      },
+
+      "NetworkSecurityEnv":{  
+         "Default":"prod",
+         "Description":"Name of the environment for network and security",
+         "Type":"String"
+      },
+
+      "KeyName":{
+         "Description":"Name of an existing EC2 KeyPair to enable SSH access to the instances",
+         "Type":"String"
+      }
+
+   },
+
+   "Resources":{
+
+      "BootstrapSecurityGroup" : {
+         "Type" : "AWS::EC2::SecurityGroup",
+         "Properties" : {
+            "GroupDescription" : "Allow SSH access to the Builder server",
+            "SecurityGroupIngress" : [{
+               "IpProtocol" : "tcp",
+               "FromPort" : "22",
+               "ToPort" : "22",
+               "CidrIp" : "0.0.0.0/0"
+            }]
+         }
+      },
+
+      "AppAccessDatastoreRole": {
+         "Type": "AWS::IAM::Role",
+         "Properties": {
+           "AssumeRolePolicyDocument": {
+             "Statement": [ {
+               "Effect": "Allow",
+               "Principal": {
+                 "Service": [ "ec2.amazonaws.com" ]
+               },
+               "Action": [ "sts:AssumeRole" ]
+             } ]
+           },
+           "Path": "/",
+           "Policies": [ {
+             "PolicyName": "AppAccess-Datastore",
+             "PolicyDocument": {
+               "Version": "2012-10-17",
+               "Statement": [
+                 {
+                   "Effect": "Allow",
+                   "Action":   [ "dynamodb:PutItem" ],
+                   "Resource": [ "*" ]
+                 },
+                 {
+                   "Effect": "Allow",
+                   "Action":   [ "sns:Publish" ],
+                   "Resource": [ "*" ]
+                 }
+               ]
+             }
+           } ]
+         }
+       },
+
+       "AppAccessDatastoreInstanceProfile": {
+         "Type": "AWS::IAM::InstanceProfile",
+         "Properties": {
+           "Path": "/",
+           "Roles": [ {
+             "Ref": "AppAccessDatastoreRole"
+           } ]
+         }
+       },
+
+      "BuilderInstance" : {
+         "Type": "AWS::EC2::Instance",
+
+         "Metadata" : {
+           "AWS::CloudFormation::Init" : {
+             "config" : {
+               "users": {
+                 "wsgi": {
+                   "homeDir": "/home/wsgi"
+                 }
+               },
+               "packages" : {
+                 "yum" : {
+                   "python26-pip": [],
+                   "httpd24": [],
+                   "mod24_wsgi": [],
+                   "MySQL-python": []
+                 },
+                 "python" : {
+                   "virtualenv" : [],
+                   "Flask" : [ "0.10.1" ],
+                   "Jinja2": [ "2.7.1" ],
+                   "MarkupSafe": [ "0.18" ],
+                   "Werkzeug": [ "0.9.4" ],
+                   "boto": [ "2.14.0" ],
+                   "itsdangerous": [ "0.23" ],
+                   "wsgiref": [ "0.1.2" ],
+                   "MySQL-python": [ "1.2.3" ],
+                   "Flask-MySQL": [ "1.2" ],
+                   "SQLAlchemy": [],
+                   "Flask-SQLAlchemy": []
+                 }
+               },
+               "sources": {
+                 "/var/www/html/": { "Ref" : "ReleaseBundleURL" }
+               },
+               "files": {
+                 "/etc/httpd/conf.d/wsgi.conf": {
+                   "content": "PFZpcnR1YWxIb3N0ICo+DQoNCkFsaWFzIC9zdGF0aWMvIC92YXIvd3d3L2h0bWwvc3RhdGljLw0KPERpcmVjdG9yeSAvdmFyL3d3dy9odG1sL3N0YXRpYy8+DQogIE9yZGVyIGFsbG93LGRlbnkNCiAgQWxsb3cgZnJvbSBhbGwNCjwvRGlyZWN0b3J5Pg0KDQoNCldTR0lTY3JpcHRBbGlhcyAvIC92YXIvd3d3L2h0bWwvYXBwbGljYXRpb24ucHkNCldTR0lQYXNzQXV0aG9yaXphdGlvbiBPbg0KDQo8RGlyZWN0b3J5IC92YXIvd3d3L2h0bWw+DQogIFJlcXVpcmUgYWxsIGdyYW50ZWQNCjwvRGlyZWN0b3J5Pg0KDQpXU0dJRGFlbW9uUHJvY2VzcyB3c2dpIHVzZXI9d3NnaSBncm91cD13c2dpIHByb2Nlc3Nlcz0xIHRocmVhZHM9MTUgZGlzcGxheS1uYW1lPSV7R1JPVVB9DQpXU0dJUHJvY2Vzc0dyb3VwIHdzZ2kNCg0KPC9WaXJ0dWFsSG9zdD4=",
+                   "encoding": "base64",
+                   "mode": "000444",
+                   "owner": "apache",
+                   "group": "apache"
+                 },
+                 "/etc/sysconfig/httpd": {
+                   "content": { "Fn::Join": [ "", [
+                     "export FLASK_DEBUG=\"false\"\n",
+                     "export THEME=\"", { "Ref" : "AppTheme" }, "\"\n",
+                     "export AWS_REGION=\"", { "Ref" : "AWS::Region" }, "\"\n",
+                     "export STARTUP_SIGNUP_RDBMS=\"", { "Ref" : "MySqlEndpoint" }, "\"\n",
+                     "export NEW_SIGNUP_TOPIC=\"", { "Ref" : "SnsTopicArn" }, "\"\n"
+                   ] ] },
+                   "mode": "000644",
+                   "owner": "root",
+                   "group": "root"
+                 }
+               },
+               "services" : {
+                 "sysvinit" : {
+                   "httpd" : {
+                     "enabled" : "true",
+                     "ensureRunning" : "true",
+                     "files" : [ "/etc/httpd/conf/httpd.conf", "/etc/httpd/conf.d/wsgi.conf", "/etc/sysconfig/httpd" ],
+                     "sources" : [ "/var/www/html" ]
+                   }
+                 }
+               }
+             }
+           }
+         },
+
+         "Properties": {
+            "IamInstanceProfile": { "Ref" : "AppAccessDatastoreInstanceProfile" },
+            "ImageId":{  
+               "Fn::FindInMap":[  
+                  "AMIID",
+                  {  
+                     "Ref":"AWS::Region"
+                  },
+                  {  
+                     "Ref":"NetworkSecurityEnv"
+                  }
+               ]
+            },
+            "InstanceType": { "Ref": "InstanceType" }, 
+            "SecurityGroups": [ { "Ref": "BootstrapSecurityGroup" } ], 
+            "KeyName": { "Ref": "KeyName" }, 
+            "UserData": {
+               "Fn::Base64": {
+                  "Fn::Join": [ "", [
+                     "#!/bin/bash\n",
+
+                     "# Apply updates cfn-init bootstrapper helper scripts\n",
+                     "yum update -y aws-cfn-bootstrap\n",
+                     "/opt/aws/bin/cfn-init -s ", { "Ref" : "AWS::StackName" }, " -r BuilderInstance --region ", { "Ref" : "AWS::Region" }, " || echo 'Failed to run cfn-init'\n",
+                     "/opt/aws/bin/cfn-signal -e $? '", { "Ref" : "WaitConditionHandle" }, "'\n"
+                  ] ]
+               }
+            },
+           "Tags" : [ { "Key" : "Name", "Value" : "AMI Builder Instance" } ]
+
+         }
+      },
+
+      "WaitConditionHandle" : {
+         "Type" : "AWS::CloudFormation::WaitConditionHandle"
+      },
+
+      "WaitCondition" : {
+         "Type" : "AWS::CloudFormation::WaitCondition",
+         "DependsOn" : "BuilderInstance",
+         "Properties" : {
+            "Handle" : {"Ref" : "WaitConditionHandle"},
+            "Timeout" : "1500"
+         }
+      }
+
+   }
+}
