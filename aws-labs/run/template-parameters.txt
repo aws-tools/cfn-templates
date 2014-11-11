@@ -1,0 +1,33 @@
+Continuous Delivery on AWS Lab Changes:
+
+Page 16, step 12g. Use the following as Template Parameters (JSON):
+[
+  {
+    "ParameterKey": "MySqlEndpoint",
+    "ParameterValue": "${bamboo.AWS.RDSEndpoint}"
+  },
+  {
+    "ParameterKey": "SnsTopicArn",
+    "ParameterValue": "${bamboo.AWS.SignupTopic}"
+  },
+  {
+    "ParameterKey": "ReleaseBundleURL",
+    "ParameterValue": "https://${bamboo.AWS.UploadBucket}.s3.amazonaws.com/${bamboo.repository.revision.n umber}/build/bundle.tar.gz"
+  }
+]
+
+Page 19, step 15.  Use the following as Template Parameters (JSON):
+[
+  {
+    "ParameterKey": "HashKey",
+    "ParameterValue": "${bamboo.planKey}-${bamboo.planRepository.branchName}"
+  },
+  {
+    "ParameterKey": "RangeKey",
+    "ParameterValue": "${bamboo.buildNumber}"
+  },
+  {
+    "ParameterKey": "AmiLookupSnsTopicArn",
+    "ParameterValue": "${bamboo.AWS.AMIRegistryTopic}"
+  }
+]
