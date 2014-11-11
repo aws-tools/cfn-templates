@@ -12,7 +12,7 @@ Page 16, step 12g. Use the following as Template Parameters (JSON):
   },
   {
     "ParameterKey": "ReleaseBundleURL",
-    "ParameterValue": "https://${bamboo.AWS.UploadBucket}.s3.amazonaws.com/${bamboo.repository.revision.n umber}/build/bundle.tar.gz"
+    "ParameterValue": "https://${bamboo.AWS.UploadBucket}.s3.amazonaws.com/${bamboo.repository.revision.number}/build/bundle.tar.gz"
   }
 ]
 
