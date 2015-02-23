@@ -38,13 +38,13 @@
     "AppTheme" : {
       "Description": "Bootstrap theme for web application",
       "Type": "String",
-      "Default": "superhero"
+      "Default": "flatly"
     },
 
     "InstanceType": {
       "Description": "EC2 instance type, e.g. m3.medium, m3.large, etc.",
       "Type": "String",
-      "Default": "m3.medium"
+      "Default": "t2.micro"
     }
 
   },
