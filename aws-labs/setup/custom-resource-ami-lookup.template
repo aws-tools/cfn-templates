@@ -6,6 +6,7 @@
   "Mappings": {
 
     "AwsRegionAmznLinuxAmi": {
+      "eu-central-1": { "hvm": "ami-04003319", "pvm": "ami-0600331b" },
       "eu-west-1": { "hvm": "ami-892fe1fe", "pvm": "ami-d02386a7" },
       "sa-east-1": { "hvm": "ami-c9e649d4", "pvm": "ami-e1f15bfc" },
       "us-east-1": { "hvm": "ami-76817c1e", "pvm": "ami-904be6f8" },
