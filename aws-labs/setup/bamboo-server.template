@@ -3,11 +3,14 @@
     "Description": "Bamboo Server",
     "Mappings": {
         "AMIID": {
+            "eu-central-1": {
+                "prod": "ami-04003319"
+            },
             "eu-west-1": {
                 "prod": "ami-a921dfde"
             },
             "sa-east-1": {
-                "prod": "ami-89de7c9"
+                "prod": "ami-89de7c94"
             },
             "us-east-1": {
                 "prod": "ami-2f726546"
