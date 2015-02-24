@@ -5,6 +5,7 @@
 
    "Mappings":{  
       "AMIID":{
+         "eu-central-1": { "prod": "ami-04003319" },
          "eu-west-1": { "prod": "ami-892fe1fe" },
          "sa-east-1": { "prod": "ami-c9e649d4" },
          "us-east-1": { "prod": "ami-76817c1e" },
