@@ -6,6 +6,7 @@
   "Mappings": {
 
     "AWSRegionArch2AMI": {
+      "eu-central-1": { "linux": "ami-04003319", "windows": "ami-ea8bb8f7" },
       "eu-west-1": { "linux": "ami-892fe1fe", "windows": "ami-d02386a7" },
       "sa-east-1": { "linux": "ami-c9e649d4", "windows": "ami-e1f15bfc" },
       "us-east-1": { "linux": "ami-76817c1e", "windows": "ami-904be6f8" },
