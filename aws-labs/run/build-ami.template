@@ -137,8 +137,8 @@
                  "yum" : {
                    "python26-pip": [],
                    "httpd24": [],
-                   "mod24_wsgi": [],
-                   "MySQL-python": []
+                   "mod24_wsgi-python26": [],
+                   "MySQL-python26": []
                  },
                  "python" : {
                    "virtualenv" : [],
