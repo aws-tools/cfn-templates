@@ -148,7 +148,7 @@
         } ],
         "HealthCheck": {
           "Timeout": "5",
-          "Target": { "Fn::Join" : [ "", [ "HTTP:", "80", "/" ] ] },
+          "Target": "HTTP:80/",
           "Interval": "20",
           "HealthyThreshold": "3",
           "UnhealthyThreshold": "5"
@@ -254,6 +254,7 @@
       "Type": "AWS::AutoScaling::AutoScalingGroup",
       "Properties": {
         "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
+		"VPCZoneIdentifier" : { "Ref" : "AppSubnets" },
         "MaxSize": "10",
         "MinSize": "1",
         "DesiredCapacity": "1",
@@ -262,7 +263,6 @@
         "LoadBalancerNames": [ { "Ref": "WebAppLoadBalancer" } ],
         "HealthCheckType": "ELB",
         "HealthCheckGracePeriod": "300",
-		"VPCZoneIdentifier" : { "Ref" : "AppSubnets" },
         "Tags" : [ { "Key" : "Name", "Value" : "cfn-flask-signup app instance", "PropagateAtLaunch": true } ]
       }
     },
@@ -285,9 +285,14 @@
 
   "Outputs": {
 
-    "WebAppLoadBalancerUrl": {
+    "WebAppUrl": {
       "Description": "The Flask SignUp web application URL",
       "Value": { "Fn::Join": ["", ["http:\/\/", { "Fn::GetAtt": [ "WebAppLoadBalancer", "DNSName" ] } ] ] }
+    },
+	
+    "LoadBalancerName": {
+      "Description": "Resource name of the load balancer",
+      "Value": { "Ref" : "WebAppLoadBalancer" }
     }
 
   }

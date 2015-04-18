@@ -5,6 +5,21 @@
 
   "Parameters": {
 
+    "VpcId" : {
+      "Description" : "Id of VPC to deploy application tier to",
+      "Type" : "AWS::EC2::VPC::Id"
+    },
+	
+  	"ElbSubnets" : {
+      "Description" : "List of VPC public subnet Ids to deploy ELBs to - one public subnet per AZ",
+  	  "Type" : "List<AWS::EC2::Subnet::Id>"
+  	},
+	
+  	"AppSubnets" : {
+      "Description" : "List of VPC private subnet Ids to deploy application servers to - one private subnet per AZ",
+  	  "Type" : "List<AWS::EC2::Subnet::Id>"
+  	},
+	
     "InstanceType": {
       "Description": "EC2 instance type, e.g. m3.medium, m3.large, etc.",
       "Type": "String",
@@ -89,6 +104,7 @@
     "ElbSecurityGroup" : {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
+      	"VpcId" : { "Ref" : "VpcId" },
         "GroupDescription" : "Enable HTTP and HTTPS access to port 80 and 443 respectively",
         "SecurityGroupIngress": [ 
           { "CidrIp": "0.0.0.0/0", "FromPort": "80", "IpProtocol": "tcp", "ToPort": "80" },
@@ -100,6 +116,7 @@
     "WebAppSecurityGroup" : {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
+      	"VpcId" : { "Ref" : "VpcId" },
         "GroupDescription" : "Enable HTTP and HTTPS access to port 80 and 443 respectively",
         "SecurityGroupIngress" : [
           { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "SourceSecurityGroupId" : { "Fn::GetAtt": [ "ElbSecurityGroup", "GroupId" ] } },
@@ -111,7 +128,7 @@
     "WebAppLoadBalancer": {
       "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
       "Properties": {
-        "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
+      	"Subnets" : { "Ref" : "ElbSubnets" },  
         "Listeners": [ {
           "LoadBalancerPort": "80",
           "InstancePort": "80",
@@ -172,9 +189,11 @@
       "Type": "AWS::AutoScaling::AutoScalingGroup",
       "Properties": {
         "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
+		"VPCZoneIdentifier" : { "Ref" : "AppSubnets" },
         "MaxSize": "10",
-        "Cooldown": "360",
         "MinSize": "1",
+        "DesiredCapacity": "1",
+        "Cooldown": "360",
         "LaunchConfigurationName": { "Ref": "WebAppAutoScalingLaunchConfiguration" },
         "LoadBalancerNames": [ { "Ref": "WebAppLoadBalancer" } ],
         "HealthCheckType": "ELB",
@@ -207,7 +226,7 @@
     },
 
     "LoadBalancerName": {
-      "Description": "DNS name of the load balancer",
+      "Description": "Resource name of the load balancer",
       "Value": { "Ref" : "WebAppLoadBalancer" }
     }
 
