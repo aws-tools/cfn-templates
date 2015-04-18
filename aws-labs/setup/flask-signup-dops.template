@@ -1,0 +1,677 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09", 
+
+  "Description": "Linux DevOps EC2 instance with AWS and third-party CICD, Code, Repo, Build and Release tools",
+
+  "Mappings": {
+
+    "AmazonLinuxDevOpsAmi": {
+      "eu-central-1": { "hvm": "ami-04003319", "pvm": "ami-0600331b" },
+      "sa-east-1": { "hvm": "ami-af9925b2", "pvm": "ami-fd9925e0" },
+      "ap-northeast-1": { "hvm": "ami-18869819", "pvm": "ami-3c87993d" },
+      "eu-west-1": { "hvm": "ami-9d23aeea", "pvm": "ami-7b3db00c" },
+      "us-east-1": { "hvm": "ami-146e2a7c", "pvm": "ami-8e682ce6" },
+      "us-west-1": { "hvm": "ami-42908907", "pvm": "ami-f49089b1" },
+      "us-west-2": { "hvm": "ami-dfc39aef", "pvm": "ami-9fc29baf" },
+      "ap-southeast-2": { "hvm": "ami-d50773ef", "pvm": "ami-1500742f" },
+      "ap-southeast-1": { "hvm": "ami-96bb90c4", "pvm": "ami-58ba910a" }
+    }
+
+  },
+
+  "Parameters": {
+
+    "VpcCidr" : {
+      "Type" : "String",
+      "Description" : "VPC CIDR block between /16 and /28",
+      "Default" : "10.100.0.0/23",
+      "ConstraintDescription" : "VPC CIDR block address must be in the form n.n.n.n/m",
+      "AllowedPattern" : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    },
+
+    "PubNetCidrAz1" : {
+      "Type" : "String",
+      "Description" : "CIDR block for public subnet located in AZ1",
+      "Default" : "10.100.0.0/25",
+      "ConstraintDescription" : "CIDR block address must be in the form n.n.n.n/m",
+      "AllowedPattern" : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    },
+
+    "PubNetCidrAz2" : {
+      "Type" : "String",
+      "Description" : "CIDR block for public subnet located in AZ2",
+      "Default" : "10.100.0.128/25",
+      "ConstraintDescription" : "CIDR block address must be in the form n.n.n.n/m",
+      "AllowedPattern" : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    },
+
+    "PriNetCidrAz1" : {
+      "Type" : "String",
+      "Description" : "CIDR block for private subnet located in AZ1",
+      "Default" : "10.100.1.0/25",
+      "ConstraintDescription" : "CIDR block address must be in the form n.n.n.n/m",
+      "AllowedPattern" : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    },
+
+    "PriNetCidrAz2" : {
+      "Type" : "String",
+      "Description" : "CIDR block for private subnet located in AZ2",
+      "Default" : "10.100.1.128/25",
+      "ConstraintDescription" : "CIDR block address must be in the form n.n.n.n/m",
+      "AllowedPattern" : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    },
+	  
+    "InstanceType": {
+      "Description": "EC2 instance type, e.g. m3.medium, m3.large, etc.",
+      "Type": "String",
+      "Default": "m3.medium",
+      "AllowedValues" : [ "t2.micro","t2.small","t2.medium","m3.medium","m3.large","m3.xlarge","m3.2xlarge","c4.large","c4.xlarge","c4.2xlarge","c4.4xlarge","c4.8xlarge","c3.large","c3.xlarge","c3.2xlarge","c3.4xlarge","c3.8xlarge","r3.large","r3.xlarge","r3.2xlarge","r3.4xlarge","r3.8xlarge","i2.xlarge","i2.2xlarge","i2.4xlarge","i2.8xlarge" ]
+    },
+
+    "KeyName": {
+      "Description": "Name of an existing EC2 KeyPair to enable remote access to the development server",
+      "Type": "AWS::EC2::KeyPair::KeyName"
+    },
+
+    "AdminCidr": {
+      "Description": "Source CIDR block that can access Development Server instance via admin tools",
+      "Type": "String",
+      "Default": "192.168.0.1/32",
+      "ConstraintDescription": "CIDR block address must be in the form n.n.n.n/m",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    },
+	
+	"MinInt": {
+      "Description": "Minimum interval, in minutes, between cfn application stack deployments",
+	  "Type": "Number",
+	  "Default": "10"
+	},
+	
+	"MaxInt": {
+      "Description": "Maximum interval, in minutes, between cfn application stack deployments",
+	  "Type": "Number",
+	  "Default": "30"
+	}
+	
+  },
+
+  "Resources": {
+
+	"Vpc" : {
+	  "Type" : "AWS::CloudFormation::Stack",
+      "Properties" : {
+        "TemplateURL" : "http://awsinfo.me.s3.amazonaws.com/services/cloudformation/templates/flask-signup-vpc.template",
+        "Parameters" : {
+	      "VpcCidr" : { "Ref" : "VpcCidr" },
+		  "PubNetCidrAz1" : { "Ref" : "PubNetCidrAz1" },
+		  "PubNetCidrAz2" : { "Ref" : "PubNetCidrAz2" },
+		  "PriNetCidrAz1" : { "Ref" : "PriNetCidrAz1" },
+		  "PriNetCidrAz2" : { "Ref" : "PriNetCidrAz2" }
+	    }
+      }
+    },
+	  
+    "DevOpsUser" : {
+      "Type": "AWS::IAM::User"
+    },
+
+    "DevOpsUserPolicy": {
+      "Type" : "AWS::IAM::Policy",
+      "Properties" : {
+        "PolicyName" : "DevOpsUsers",
+        "PolicyDocument" : {
+          "Statement": [ {
+            "Effect"   : "Allow",
+            "Action"   : "*",
+            "Resource" : "*"
+          } ]
+        },
+        "Users" : [ { "Ref" : "DevOpsUser" } ]
+      }
+    },     
+
+    "DevOpsUserAccessKey": {
+      "Type" : "AWS::IAM::AccessKey",
+      "Properties" : {
+        "UserName" : { "Ref": "DevOpsUser" }
+      }
+    },
+
+    "DeploymentS3Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain"
+    },
+
+    "DeploymentS3BucketPolicy": {
+      "Type" : "AWS::S3::BucketPolicy",
+      "Properties" : {
+        "Bucket" : { "Ref": "DeploymentS3Bucket" },
+        "PolicyDocument" : { 
+          "Statement":[ 
+            {
+ 	      "Action":[ "s3:GetObject" ],
+	      "Effect":"Allow",
+	      "Resource": { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "DeploymentS3Bucket" } , "/*" ] ] },
+	      "Principal":"*"
+            }
+          ]
+        }
+      }
+    },
+
+    "InstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [ {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [ "ec2.amazonaws.com" ]
+            },
+            "Action": [ "sts:AssumeRole" ]
+          } ]
+        },
+        "Path": "/",
+        "Policies": [ {
+          "PolicyName": "admin",
+          "PolicyDocument": {
+            "Statement": [ {
+              "Effect": "Allow",
+              "Action": "*",
+              "Resource": "*"
+            } ]
+          }
+        } ]
+      }
+    },
+
+    "InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [ {
+          "Ref": "InstanceRole"
+        } ]
+      }
+    },
+
+    "AdminSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+  		"VpcId" : { "Fn::GetAtt": [ "Vpc", "Outputs.VpcId" ] },  
+        "GroupDescription": "SSH access on port 22", 
+        "SecurityGroupIngress": [ { "CidrIp": { "Ref" : "AdminCidr" }, "FromPort": "22", "IpProtocol": "tcp", "ToPort": "22" } ]
+      }
+    },
+	
+    "NatSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "VpcId" : { "Fn::GetAtt": [ "Vpc", "Outputs.VpcId" ] },
+        "GroupDescription" : "Private instances access via NAT",
+        "SecurityGroupIngress" : [ 
+                { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : { "Ref" : "VpcCidr" } },
+                { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : { "Ref" : "VpcCidr" } }
+        ],
+        "SecurityGroupEgress" : [ 
+                { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
+                { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" }
+        ]
+      }
+    },
+
+    "WebSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+  		"VpcId" : { "Fn::GetAtt": [ "Vpc", "Outputs.VpcId" ] },		  
+        "GroupDescription": "HTTP access on port 80",
+        "SecurityGroupIngress": [ { "CidrIp": { "Ref" : "AdminCidr" }, "FromPort": "80", "IpProtocol": "tcp", "ToPort": "80" } ]
+      }
+    },
+
+    "DevOpsInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Metadata" : {
+        "AWS::CloudFormation::Init" : {
+          "configSets": {
+            "cicd": [ "ops", "dev", "run" ]
+          },
+          "ops" : {
+            "packages" : {
+              "yum" : {
+                "git" : [],
+                "jq" : [],
+                "java-1.7.0-openjdk" : [],
+                "mysql55" : []
+              },
+              "rubygems" : {
+                "bundler" : [],
+                "cloudformation-ruby-dsl" : []
+              }
+            },
+            "files" : {
+              "/etc/sysctl.d/nat.conf" : {
+                "content" : { "Fn::Join" : [ "", [
+                  "net.ipv4.ip_forward = 1\n",
+                  "net.ipv4.conf.eth0.send_redirects = 0\n"
+                  ] ]
+                },
+                "mode" : "000644",
+                "owner" : "root",
+                "group" : "root"
+              },
+			  "/tmp/cicd-lab-simulation.sh" : {
+				"source" : "http://awsinfo.me.s3.amazonaws.com/services/cloudformation/templates/simulated/cicd-lab-simulation.sh",
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000755"
+			  }
+            },
+            "commands" : {
+              "1-config-forwarding" : {
+                "command" : { "Fn::Join" : [ "", [
+                  "sysctl -e -p /etc/sysctl.d/nat.conf\n",
+                  "/sbin/iptables -t nat -A POSTROUTING -o eth0 -s ", { "Ref" : "VpcCidr" },  " -j MASQUERADE\n",
+                  "/sbin/iptables-save > /etc/sysconfig/iptables\n",
+                  "INSTANCEID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)\n",
+                  "aws ec2 modify-instance-attribute --instance-id $INSTANCEID --source-dest-check '{\"Value\": false}' --region ", { "Ref" : "AWS::Region" }, "\n"
+                  ] ]
+                }
+              },
+              "2-config-routing" : {
+                "command" : { "Fn::Join" : [ "", [
+                  "INSTANCEID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)\n",
+                  "aws ec2 replace-route --route-table-id ", { "Fn::GetAtt": [ "Vpc", "Outputs.PriSubnetRouteTable" ] }, " --destination-cidr-block 0.0.0.0/0 --instance-id $INSTANCEID --region ", { "Ref" : "AWS::Region" }, "\n"
+                  ] ]
+                }
+              },
+			  "3-cicd-lab-simulation" : {
+				"command" : { "Fn::Join" : [ " ", [
+			      "echo /tmp/cicd-lab-simulation.sh", { "Fn::GetAtt": [ "Vpc", "Outputs.VpcId" ] }, { "Fn::GetAtt": [ "Vpc", "Outputs.PubSubnetIdAz1" ] }, { "Fn::GetAtt": [ "Vpc", "Outputs.PubSubnetIdAz2" ] }, { "Fn::GetAtt": [ "Vpc", "Outputs.PriSubnetIdAz1" ] }, { "Fn::GetAtt": [ "Vpc", "Outputs.PriSubnetIdAz2" ] }, { "Ref": "KeyName" }, { "Ref": "MinInt" }, { "Ref": "MaxInt" }, "| at now + 2min\n"
+			      ] ]
+				}
+			  }	
+            }
+          },
+          "dev" : {
+            "packages" : {
+              "yum" : {
+                "git" : [],
+                "jq" : [],
+                "python26-pip" : [],
+                "mod24_wsgi-python26" : [],
+                "MySQL-python26" : []
+              },
+              "python" : {
+                "virtualenv" : [],
+                "Flask" : [ "0.10.1" ],
+                "Jinja2": [ "2.7.1" ],
+                "MarkupSafe": [ "0.18" ],
+                "Werkzeug": [ "0.9.4" ],
+                "boto": [],
+                "itsdangerous": [ "0.23" ],
+                "wsgiref": [ "0.1.2" ],
+                "MySQL-python": [ "1.2.3" ],
+                "SQLAlchemy": [ "0.9.8" ],
+                "Flask-SQLAlchemy": [ "2.0" ],
+				"FileChunkIO" : [],
+				"pytz" : []
+              },
+              "rubygems": {
+                "bundler": [],
+                "cloudformation-ruby-dsl": []
+              }
+            },			  
+            "files" : {
+              "/home/bamboo/.aws/config" : {
+                "content" : { "Fn::Join" : ["", [
+                  "[profile r53]\n",
+                  "aws_access_key_id = ", { "Ref" : "R53AccessKey" }, "\n",
+                  "aws_secret_access_key = ", { "Ref" : "R53SecretAccessKey" }, "\n",
+                  "region = ", { "Ref" : "AWS::Region" }, "\n"
+                ] ] }
+              },	
+              "/etc/httpd/conf.d/ajp.conf": { 
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000644",
+                "source" : "http://s3-us-west-2.amazonaws.com/reinvent-continuous-integration-delivery/builds/bambooserver-prod-1-bamboo/files/ajp.conf"
+              },
+              "/usr/local/bin/AMIregister": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000755",
+                "source" : "https://s3-us-west-2.amazonaws.com/reinvent-continuous-integration-delivery/builds/bambooserver-prod-1-bamboo/files/AMIregister"
+              },
+              "/usr/local/bin/GetPlanConfig": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000755",
+                "source" : "http://cicd-delivery.s3-website-ap-southeast-2.amazonaws.com/scripts/GetPlanConfig"
+              },
+              "/usr/local/bin/SetPlanConfig": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000755",
+                "source" : "http://cicd-delivery.s3-website-ap-southeast-2.amazonaws.com/scripts/SetPlanConfig"
+              },
+              "/usr/local/bin/SwitchStack": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000755",
+                "source" : "http://cicd-delivery.s3-website-ap-southeast-2.amazonaws.com/scripts/SwitchStack"
+              },
+              "/home/ec2-user/app_postmetadata-5.4.2.sh": {
+                "owner" : "ec2-user",
+                "group" : "ec2-user",
+                "mode" : "000755",
+                "source" : "https://s3-us-west-2.amazonaws.com/reinvent-continuous-integration-delivery/builds/bambooserver-prod-1-bamboo/files/app_postmetadata.sh"
+              },
+              "/home/ec2-user/app_postmetadata.sh": {
+                "owner" : "ec2-user",
+                "group" : "ec2-user",
+                "mode" : "000755",
+                "source" : "http://awsinfo.me.s3.amazonaws.com/scripts/app_postmetadata.sh"
+              },
+              "/tmp/atlassian-bamboo-5.4.2.tar.gz": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000644",
+                "source" : "https://s3-us-west-2.amazonaws.com/reinvent-continuous-integration-delivery/repo/products/devsupt/atlassian-bamboo-5.4.2.tar.gz"
+              },
+              "/tmp/atlassian-bamboo.tar.gz": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000644",
+                "source" : "http://awsinfo.me.s3.amazonaws.com/media/atlassian-bamboo-5.8.1.tar.gz"
+              },
+              "/tmp/bamboo": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000644",
+                "source" : "https://s3-us-west-2.amazonaws.com/reinvent-continuous-integration-delivery/builds/bambooserver-prod-1-bamboo/files/bamboo.startup"
+              },
+              "/tmp/jdk-7u45-linux-x64.rpm": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000644",
+                "source" : "https://s3-us-west-2.amazonaws.com/reinvent-continuous-integration-delivery/repo/products/devsupt/jdk-7u45-linux-x64.rpm"
+              },
+              "/tmp/mysql-connector-java-5.1.29-bin.jar": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000644",
+                "source" : "https://s3-us-west-2.amazonaws.com/reinvent-continuous-integration-delivery/repo/products/devsupt/mysql-connector-java-5.1.29-bin.jar"
+              },
+              "/tmp/server.xml": {
+                "owner" : "root",
+                "group" : "root",
+                "mode" : "000644",
+                "source" : "https://s3-us-west-2.amazonaws.com/reinvent-continuous-integration-delivery/builds/bambooserver-prod-1-bamboo/files/server.xml"
+              }
+            },
+            "services": {
+              "sysvinit": {
+                "httpd": {
+                  "enabled": "true",
+                  "ensureRunning": "true",
+                  "files": [ "/etc/httpd/conf.d/ajp.conf" ]
+                }
+              }
+            }
+          },
+          "run" : {
+            "packages" : {
+              "rpm" : {
+                "aws-cfn-resource-bridge" : "https://raw.githubusercontent.com/aws-staging/aws-labs/master/aws-cfn-resource-bridge-0.1-4.noarch.rpm"
+              }
+            },
+            "files" : {
+              "/etc/cfn/bridge.d/schema.conf" : {
+                "content" : { "Fn::Join" : ["", [
+                  "[schema]\n",
+                  "resource_type=Custom::AmiLookup\n",
+                  "flatten=false\n",
+                  "queue_url=", { "Ref" : "AmiLookupQueue" }, "\n",
+                  "timeout=600\n",
+                  "default_action=/home/ec2-user/ami-ddb-lookup.py\n"
+                ] ] }
+              },
+              "/home/ec2-user/ami-ddb-lookup.py" : {
+                "source" : "https://raw.githubusercontent.com/aws-staging/aws-labs/master/ami-ddb-lookup.py",
+                "mode" : "000755",
+                "owner" : "ec2-user"
+              }
+            },
+            "services" : {
+              "sysvinit" : {
+                "cfn-resource-bridge" : {
+                  "enabled" : "true",
+                  "ensureRunning" : "true",
+                  "files" : [ "/etc/cfn/bridge.d/schema.conf", "/home/ec2-user/ami-ddb-lookup.py" ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "Properties": {
+        "ImageId": { "Fn::FindInMap": [ "AmazonLinuxDevOpsAmi", { "Ref": "AWS::Region" }, "hvm" ] },
+        "InstanceType": { "Ref": "InstanceType" }, 
+        "BlockDeviceMappings": [ { "DeviceName": "/dev/xvda", "Ebs": { "VolumeSize": "50", "VolumeType": "gp2" } } ],
+        "IamInstanceProfile": { "Ref": "InstanceProfile" },
+        "KeyName": { "Ref": "KeyName" },
+        "SubnetId" : { "Fn::GetAtt": [ "Vpc", "Outputs.PubSubnetIdAz2" ] },
+        "SecurityGroupIds": [ { "Ref": "AdminSecurityGroup" }, { "Ref" : "NatSecurityGroup" }, { "Ref": "WebSecurityGroup" } ],
+		"SourceDestCheck" : false,
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [ "", [
+              "#!/bin/bash\n",
+  
+              "# Apply updates cfn-init bootstrapper helper scripts\n",
+              "yum update -y aws-cfn-bootstrap\n",
+              "sed -i -e 's/Defaults    requiretty/#Defaults    requiretty/g' /etc/sudoers\n",
+              "/opt/aws/bin/cfn-init -s ", { "Ref" : "AWS::StackName" }, " -r DevOpsInstance -c cicd --role ", { "Ref": "InstanceRole" }, " --region ", { "Ref" : "AWS::Region" }, " || echo 'Failed to run cfn-init'\n",
+              "if [ -e /home/ec2-user/app_postmetadata.sh ];then /bin/su -c \"/home/ec2-user/app_postmetadata.sh\" -s /bin/sh ec2-user;fi\n",
+              "/opt/aws/bin/cfn-signal -e $? '", { "Ref" : "WaitHandle" }, "'\n"
+            ] ]
+          }
+        },
+        "Tags" : [ { "Key" : "Name", "Value" : "Linux DevOps Instance" } ]
+      }
+    },
+
+    "WaitHandle" : {
+      "Type" : "AWS::CloudFormation::WaitConditionHandle"
+    },
+
+    "WaitCondition" : {
+      "Type" : "AWS::CloudFormation::WaitCondition",
+      "DependsOn" : "DevOpsInstance",
+      "Properties" : {
+        "Handle" : {"Ref" : "WaitHandle"},
+        "Timeout" : "1500"
+      }
+    },
+
+    "EIP": {
+      "Type": "AWS::EC2::EIP",
+      "Properties": {
+        "InstanceId": { "Ref": "DevOpsInstance" }
+      }
+    },
+
+    "DynamoDbAmiTable" : {
+      "Type" : "AWS::DynamoDB::Table",
+      "Properties" : {
+        "TableName" : "ami-lookup-table",
+        "ProvisionedThroughput" : {
+          "ReadCapacityUnits" : "1",
+          "WriteCapacityUnits" : "1"
+        },
+        "AttributeDefinitions" : [
+         {
+           "AttributeName" : "hash",
+           "AttributeType" : "S"
+          },
+          {
+            "AttributeName" : "range",
+            "AttributeType" : "N"
+          }
+        ],
+        "KeySchema" : [
+          {
+            "AttributeName" : "hash",
+            "KeyType" : "HASH"
+          },
+          {
+            "AttributeName" : "range",
+            "KeyType" : "RANGE"
+          }
+        ]
+      }
+    },
+
+    "DynamoDbConfigTable" : {
+      "Type" : "AWS::DynamoDB::Table",
+      "Properties" : {
+        "TableName" : "plan-config",
+        "ProvisionedThroughput" : {
+          "ReadCapacityUnits" : "1",
+          "WriteCapacityUnits" : "1"
+        },
+        "AttributeDefinitions" : [
+         {
+           "AttributeName" : "hash",
+           "AttributeType" : "S"
+          },
+          {
+            "AttributeName" : "range",
+            "AttributeType" : "S"
+          }
+        ],
+        "KeySchema" : [
+          {
+            "AttributeName" : "hash",
+            "KeyType" : "HASH"
+          },
+          {
+            "AttributeName" : "range",
+            "KeyType" : "RANGE"
+          }
+        ]
+      }
+    },
+	
+    "AmiLookupQueue" : {
+      "Type": "AWS::SQS::Queue",
+        "Properties": {
+          "ReceiveMessageWaitTimeSeconds": "20",
+          "VisibilityTimeout": "30"
+        }
+    }, 
+
+    "AmiLookupTopic" : {
+      "Type" : "AWS::SNS::Topic",
+      "Properties" : {
+        "Subscription" : [ { "Endpoint" : { "Fn::GetAtt" : [ "AmiLookupQueue", "Arn" ] }, "Protocol" : "sqs" } ]
+      }
+    },
+
+    "AmiLookupQueuePolicy" : {
+      "Type" : "AWS::SQS::QueuePolicy",
+      "Properties" : {
+        "Queues" : [ { "Ref" : "AmiLookupQueue" } ],
+        "PolicyDocument" : {
+          "Version": "2008-10-17",
+          "Id": { "Fn::Join" : [ "/", [ { "Fn::GetAtt" : [ "AmiLookupQueue", "Arn" ] }, "AmiLookupQueuePolicy" ] ] },
+          "Statement": [ {
+            "Sid": "AllowTopicToPublishMessages",
+            "Effect": "Allow",
+            "Principal": { "AWS": "*" },
+            "Action": [ "sqs:SendMessage" ],
+            "Resource": { "Fn::GetAtt" : [ "AmiLookupQueue", "Arn" ] },
+            "Condition": { "ArnEquals": { "aws:SourceArn": { "Ref" : "AmiLookupTopic" } } }
+          } ]
+        }
+      }
+    }
+
+  },
+
+  "Outputs": {
+
+    "DevOpsServerLinuxDns": {
+      "Description": "DNS Name of the newly created Linux DevOps instance",
+      "Value": { "Fn::GetAtt": [ "DevOpsInstance", "PublicDnsName" ] }
+    },
+
+    "DeploymentS3Bucket" : {
+      "Description" : "Deployment S3 Bucket Name",
+      "Value": { "Ref": "DeploymentS3Bucket" }
+    }, 
+
+    "AwsRegion" : {
+      "Description" : "AWS Region to be used for deployment",
+      "Value": { "Ref": "AWS::Region" }
+    },
+
+    "BambooServer" : {
+       "Description" : "URL for newly created Bamboo server",
+       "Value": { "Fn::Join": [ "", [ "http://", { "Fn::GetAtt": [ "DevOpsInstance", "PublicIp" ] } ] ] }
+    },
+	
+    "DynamoDbConfigTable" : {
+      "Description" : "DynamoDB table name for the Plan config lookups - composite key required for queries are hash and range",
+      "Value" : { "Ref": "DynamoDbConfigTable" }
+    },
+	
+    "DynamoDbAmiTable" : {
+      "Description" : "DynamoDB table name for the AMI lookup catalog - composite key required for queries are hash and range",
+      "Value" : { "Ref": "DynamoDbAmiTable" }
+     },
+
+     "AmiLookupTopicArn" : {
+       "Description" : "AMI Lookup Custom Resource SNS topic ARN",
+       "Value" : { "Ref": "AmiLookupTopic" }
+     },
+
+    "DevOpsUserAccessKey" : {
+      "Description" : "IAM Access Key for DevOps Tools",
+      "Value" : { "Ref" : "DevOpsUserAccessKey" }
+    },
+
+    "DevOpsUserSecretKey" : {
+      "Description" : "IAM Secret Key for DevOps Tools",
+      "Value" : { "Fn::GetAtt": [ "DevOpsUserAccessKey", "SecretAccessKey" ] }
+    },
+
+    "VpcId" : {
+      "Description" : "VPC Id",
+      "Value" : { "Fn::GetAtt": [ "Vpc", "Outputs.VpcId" ] }
+    },
+
+    "PubSubnetIdAz1" : {
+      "Description" : "Subnet Id for Public Subnet in AZ1",
+      "Value" : { "Fn::GetAtt": [ "Vpc", "Outputs.PubSubnetIdAz1" ] }
+    },
+
+    "PubSubnetIdAz2" : {
+      "Description" : "Subnet Id for Public Subnet in AZ2",
+      "Value" : { "Fn::GetAtt": [ "Vpc", "Outputs.PubSubnetIdAz2" ] }
+    },
+
+    "PriSubnetIdAz1" : {
+      "Description" : "Subnet Id for Private Subnet in AZ1",
+      "Value" : { "Fn::GetAtt": [ "Vpc", "Outputs.PriSubnetIdAz1" ] }
+    },
+
+    "PriSubnetIdAz2" : {
+      "Description" : "Subnet Id for Private Subnet in AZ2",
+      "Value" : { "Fn::GetAtt": [ "Vpc", "Outputs.PriSubnetIdAz2" ] }
+    }
+
+  }
+
+}
