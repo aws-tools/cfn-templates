@@ -158,8 +158,8 @@
               "yum" : {
                 "python26-pip": [],
                 "httpd24": [],
-                "mod24_wsgi": [],
-                "MySQL-python": []
+                "mod24_wsgi-python26": [],
+                "MySQL-python26": []
               },
               "python" : {
                 "virtualenv" : [],
@@ -167,7 +167,7 @@
                 "Jinja2": [ "2.7.1" ],
                 "MarkupSafe": [ "0.18" ],
                 "Werkzeug": [ "0.9.4" ],
-                "boto": [ "2.14.0" ],
+                "boto": [],
                 "itsdangerous": [ "0.23" ],
                 "wsgiref": [ "0.1.2" ],
                 "MySQL-python": [ "1.2.3" ],
