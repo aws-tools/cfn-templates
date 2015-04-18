@@ -81,17 +81,17 @@
       "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
     },
 	
-	"MinInt": {
-      "Description": "Minimum interval, in minutes, between cfn application stack deployments",
-	  "Type": "Number",
-	  "Default": "10"
-	},
-	
-	"MaxInt": {
-      "Description": "Maximum interval, in minutes, between cfn application stack deployments",
-	  "Type": "Number",
-	  "Default": "30"
-	}
+    "R53AccessKey": {
+      "Description": "Access Key that provides access to update Route53 Resource Record Sets",
+      "Type": "String",
+      "Default": "AKIAIWW26CNAZRNZ7XOA"
+    },
+
+    "R53SecretAccessKey": {
+      "Description": "Secret Access Key that provides access to update Route53 Resource Record Sets",
+      "Type": "String",
+      "Default": "NIjsxO5tO5oeV1UXhNQ5bQV95ipL3fU+28sgO2of"
+    }
 	
   },
 
@@ -284,13 +284,7 @@
                   "aws ec2 replace-route --route-table-id ", { "Fn::GetAtt": [ "Vpc", "Outputs.PriSubnetRouteTable" ] }, " --destination-cidr-block 0.0.0.0/0 --instance-id $INSTANCEID --region ", { "Ref" : "AWS::Region" }, "\n"
                   ] ]
                 }
-              },
-			  "3-cicd-lab-simulation" : {
-				"command" : { "Fn::Join" : [ " ", [
-			      "echo /tmp/cicd-lab-simulation.sh", { "Fn::GetAtt": [ "Vpc", "Outputs.VpcId" ] }, { "Fn::GetAtt": [ "Vpc", "Outputs.PubSubnetIdAz1" ] }, { "Fn::GetAtt": [ "Vpc", "Outputs.PubSubnetIdAz2" ] }, { "Fn::GetAtt": [ "Vpc", "Outputs.PriSubnetIdAz1" ] }, { "Fn::GetAtt": [ "Vpc", "Outputs.PriSubnetIdAz2" ] }, { "Ref": "KeyName" }, { "Ref": "MinInt" }, { "Ref": "MaxInt" }, "| at now + 2min\n"
-			      ] ]
-				}
-			  }	
+              }
             }
           },
           "dev" : {
