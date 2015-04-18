@@ -204,6 +204,11 @@
     "WebAppUrl": {
       "Description": "The Flask SignUp web application URL",
       "Value": { "Fn::Join": ["", ["http:\/\/", { "Fn::GetAtt": [ "WebAppLoadBalancer", "DNSName" ] } ] ] }
+    },
+
+    "LoadBalancerName": {
+      "Description": "DNS name of the load balancer",
+      "Value": { "Ref" : "WebAppLoadBalancer" }
     }
 
   }
