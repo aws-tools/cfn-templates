@@ -19,20 +19,43 @@
 
   },
 
-  "Parameters": {
+  "Parameters" : {
 
     "AppDeployUrl": {
       "Description": "HTTP/S URL for application bundle",
       "Type": "String"
     },
 
+    "VpcId" : {
+      "Description" : "Id of VPC to deploy application tier to",
+      "Type" : "AWS::EC2::VPC::Id"
+    },
+	
+	"ElbSubnets" : {
+      "Description" : "List of VPC public subnet Ids to deploy ELBs to - one public subnet per AZ",
+	  "Type" : "List<AWS::EC2::Subnet::Id>"
+	},
+	
+	"AppSubnets" : {
+      "Description" : "List of VPC private subnet Ids to deploy application servers to - one private subnet per AZ",
+	  "Type" : "List<AWS::EC2::Subnet::Id>"
+	},
+	
+    "AppInstanceType": {
+      "Description": "Application EC2 instance type, e.g. m3.medium, m3.large, etc.",
+      "Type": "String",
+      "Default": "t2.micro",
+      "AllowedValues" : [ "t2.micro","t2.small","t2.medium","m3.medium","m3.large","m3.xlarge","m3.2xlarge","c4.large","c4.xlarge","c4.2xlarge","c4.4xlarge","c4.8xlarge","c3.large","c3.xlarge","c3.2xlarge","c3.4xlarge","c3.8xlarge","r3.large","r3.xlarge","r3.2xlarge","r3.4xlarge","r3.8xlarge","i2.xlarge","i2.2xlarge","i2.4xlarge","i2.8xlarge" ],
+      "ConstraintDescription": "must be a valid EC2 instance type."
+    },
+	
     "MySqlEndpoint": {
-      "Description": "MySQL server instance DNS endpoint",
+      "Description": "DNS name or IP address of MySQL server endpoint",
       "Type": "String"
     },
 
-    "SnsTopicArn" : {
-      "Description": "SNS topic Amazon Resource Name (ARN)",
+    "SignUpSnsTopic" : {
+      "Description": "ARN of SNS topic to send new user signup notification messages to",
       "Type": "String"
     },
 
@@ -40,13 +63,6 @@
       "Description": "Bootstrap theme for web application",
       "Type": "String",
       "Default": "flatly"
-    },
-
-    "InstanceType": {
-      "Description": "EC2 instance type, e.g. m3.medium, m3.large, etc.",
-      "Type": "String",
-      "Default": "t2.micro",
-      "AllowedValues" : [ "t2.micro","t2.small","t2.medium","m3.medium","m3.large","m3.xlarge","m3.2xlarge","c4.large","c4.xlarge","c4.2xlarge","c4.4xlarge","c4.8xlarge","c3.large","c3.xlarge","c3.2xlarge","c3.4xlarge","c3.8xlarge","r3.large","r3.xlarge","r3.2xlarge","r3.4xlarge","r3.8xlarge","i2.xlarge","i2.2xlarge","i2.4xlarge","i2.8xlarge" ]
     }
 
   },
@@ -100,6 +116,7 @@
     "ElbSecurityGroup" : {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
+    	"VpcId" : { "Ref" : "VpcId" },  
         "GroupDescription" : "Enable HTTP and HTTPS access to port 80 and 443 respectively",
         "SecurityGroupIngress": [ 
           { "CidrIp": "0.0.0.0/0", "FromPort": "80", "IpProtocol": "tcp", "ToPort": "80" },
@@ -111,6 +128,7 @@
     "WebAppSecurityGroup" : {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
+    	"VpcId" : { "Ref" : "VpcId" },  
         "GroupDescription" : "Enable HTTP and HTTPS access to port 80 and 443 respectively",
         "SecurityGroupIngress" : [
           { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "SourceSecurityGroupId" : { "Fn::GetAtt": [ "ElbSecurityGroup", "GroupId" ] } },
@@ -122,7 +140,7 @@
     "WebAppLoadBalancer": {
       "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
       "Properties": {
-        "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
+    	"Subnets" : { "Ref" : "ElbSubnets" },  
         "Listeners": [ {
           "LoadBalancerPort": "80",
           "InstancePort": "80",
@@ -192,7 +210,7 @@
                   "export THEME=\"", { "Ref" : "AppTheme" }, "\"\n",
                   "export AWS_REGION=\"", { "Ref" : "AWS::Region" }, "\"\n",
                   "export STARTUP_SIGNUP_RDBMS=\"", { "Ref" : "MySqlEndpoint" }, "\"\n",
-                  "export NEW_SIGNUP_TOPIC=\"", { "Ref" : "SnsTopicArn" }, "\"\n"
+                  "export NEW_SIGNUP_TOPIC=\"", { "Ref" : "SignUpSnsTopic" }, "\"\n"
                 ] ] },
                 "mode": "000644",
                 "owner": "root",
@@ -216,7 +234,7 @@
         "IamInstanceProfile": { "Ref" : "AppAccessDatastoreInstanceProfile" },
         "ImageId":  { "Fn::FindInMap": [ "AWSRegionArch2AMI", { "Ref": "AWS::Region" }, "linux" ] },
         "SecurityGroups": [ { "Fn::GetAtt": [ "WebAppSecurityGroup", "GroupId" ] } ],
-        "InstanceType": { "Ref" : "InstanceType" },
+        "InstanceType": { "Ref" : "AppInstanceType" },
         "UserData": {
           "Fn::Base64": {
             "Fn::Join": [ "", [
@@ -237,13 +255,15 @@
       "Properties": {
         "AvailabilityZones": [ { "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }, { "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] } ],
         "MaxSize": "10",
-        "Cooldown": "360",
         "MinSize": "1",
+        "DesiredCapacity": "1",
+        "Cooldown": "360",
         "LaunchConfigurationName": { "Ref": "WebAppAutoScalingLaunchConfiguration" },
         "LoadBalancerNames": [ { "Ref": "WebAppLoadBalancer" } ],
         "HealthCheckType": "ELB",
         "HealthCheckGracePeriod": "300",
-        "Tags" : [ { "Key" : "Name", "Value" : "cfn-zip-flask-signup app instance", "PropagateAtLaunch": true } ]
+		"VPCZoneIdentifier" : { "Ref" : "AppSubnets" },
+        "Tags" : [ { "Key" : "Name", "Value" : "cfn-flask-signup app instance", "PropagateAtLaunch": true } ]
       }
     },
 
@@ -265,7 +285,7 @@
 
   "Outputs": {
 
-    "WebAppUrl": {
+    "WebAppLoadBalancerUrl": {
       "Description": "The Flask SignUp web application URL",
       "Value": { "Fn::Join": ["", ["http:\/\/", { "Fn::GetAtt": [ "WebAppLoadBalancer", "DNSName" ] } ] ] }
     }
